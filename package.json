@@ -11,6 +11,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@prisma/client": "^5.15.0",
     "axios": "^1.7.2",
     "frog": "latest",
     "hono": "^4",

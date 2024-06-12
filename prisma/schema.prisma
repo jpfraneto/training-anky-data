@@ -47,5 +47,5 @@ model ReplyForTrainingAnky {
       goodReplyText         String?
       badReplyHash          String?
       badReplyText          String?
-      comments              String?
+      comment              String?
 }

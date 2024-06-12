@@ -7,6 +7,9 @@ import { handle } from 'frog/next'
 import { serveStatic } from 'frog/serve-static'
 import axios from 'axios'
 
+const prisma  = require('../../../lib/prismaClient')
+
+
 const app = new Frog({
   assetsPath: '/',
   basePath: '/api',
@@ -71,8 +74,8 @@ app.castAction(
     const { actionData } = c
     const { castId, fid, messageHash, network, timestamp, url } = actionData
     console.log(
-      `Cast Action to ${JSON.stringify(c.actionData.castId)} from ${
-        c.actionData.fid
+      `Cast Action to ${castId} from ${
+        fid
       }`,
     )
     // TODO - GET THE CAST HASH FROM THE ROOT CAST ASSOCIATED WITH THIS MESSAGE HASH
@@ -125,13 +128,55 @@ app.frame('/save-this-reply-frame/:rootCastHash/:goodReplyHash', (c) => {
   })
 })
 
-app.frame('/store-on-database/:rootCastHash/:goodReplyHash', (c) => {
+app.frame('/store-on-database/:rootCastHash/:goodReplyHash', async (c) => {
   const { rootCastHash, goodReplyHash } = c.req.param()
   const badReplyLink = c.inputText;
+
+
+  async function getThisCastInformationFromHash (castHash) {
+    try {
+      const castResponse = await axios.get(`https://api.neynar.com/v2/farcaster/cast?identifier=${castHash}&type=hash&viewer_fid=16098`)
+      return castResponse.data.cast
+    } catch (error) {
+      console.log("there was an error festing the cast from neynar", castHash)
+    }
+  }
+
+  async function getThisCastInformationFromUrl (castUrl) {
+    try {
+      const castResponse = await axios.get(`https://api.neynar.com/v2/farcaster/cast?identifier=${encodeURIComponent(castUrl)}&type=url&viewer_fid=16098`)
+      return castResponse.data.cast
+    } catch (error) {
+      console.log("there was an error festing the cast from neynar", castHash)
+    }
+  }
+
+  async function storeOnDatabase (rootHash, goodHash, badLink) {
+    try {
+      const rootCast = await getThisCastInformationFromHash(rootHash)
+      const goodCast = await getThisCastInformationFromHash(goodHash)
+      const badCast =  await getThisCastInformationFromUrl(badLink)
+      const prismaResponse = await prisma.replyForTrainingAnky.create({
+        data: {
+          rootCastHash: rootHash,
+          rootCastText: rootCast.text,
+          goodReplyHash: goodHash,
+          goodReplyText: goodCast.text,
+          badReplyHash: badCast.hash,
+          badReplyText: badCast.text
+        }
+      })
+      return prismaResponse
+    } catch (error) {
+      console.log('there was an error adding the casts to the database')
+    }
+  }
   // fetch the bad reply link to neynar and store the data associated with it on the database
-  const prismaReplyId = "asdaioudsa"
+  const prismaReplyId = await storeOnDatabase(rootCastHash, goodReplyHash, badReplyLink)
+
+  
   return c.res({
-    action: `/save-comment/${prismaReplyId}`,
+    action: `/save-comment/${prismaReplyId.id}`,
     image: (
       <div
             style={{
@@ -170,11 +215,18 @@ app.frame('/store-on-database/:rootCastHash/:goodReplyHash', (c) => {
   })
 })
 
-app.frame('/save-comment/:prismaId', (c) => {
+app.frame('/save-comment/:prismaId', async (c) => {
   const { prismaId } = c.req.param()
   const { inputText } = c
   if (inputText && inputText?.length > 2) {
-  // fetch the database and add the corresponding comment 
+    await prisma.replyForTrainingAnky.update({
+      where: {
+        id: prismaId
+      },
+      data: {
+        comment: inputText
+      }
+    })
     return c.res({
       image: (
         <div
